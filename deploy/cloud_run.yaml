@@ -1,0 +1,56 @@
+# Cloud Run service: Backlot + the Grafana MCP server as a sidecar.
+# Secrets come from Secret Manager; the service account needs roles/aiplatform.user
+# (Gemini on the Agent Platform) and roles/secretmanager.secretAccessor.
+#   envsubst < deploy/cloud_run.yaml | gcloud run services replace - --region $REGION
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: backlot
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/container-dependencies: '{"backlot":["mcp-grafana"]}'
+        autoscaling.knative.dev/maxScale: "3"
+    spec:
+      serviceAccountName: backlot-runner@${PROJECT_ID}.iam.gserviceaccount.com
+      timeoutSeconds: 600
+      containers:
+        - name: backlot
+          image: ${REGION}-docker.pkg.dev/${PROJECT_ID}/backlot/backlot:latest
+          ports: [{containerPort: 8080}]
+          env:
+            - {name: GOOGLE_GENAI_USE_VERTEXAI, value: "TRUE"}
+            - {name: GOOGLE_CLOUD_PROJECT, value: "${PROJECT_ID}"}
+            - {name: GOOGLE_CLOUD_LOCATION, value: "${REGION}"}
+            - {name: GEMINI_MODEL, value: "${GEMINI_MODEL}"}
+            - {name: GRAFANA_URL, value: "${GRAFANA_URL}"}
+            - {name: MCP_GRAFANA_URL, value: "http://localhost:8000/mcp"}
+            - {name: OTLP_METRICS_ENDPOINT, value: "${OTLP_METRICS_ENDPOINT}"}
+            - {name: OTLP_LOGS_ENDPOINT, value: "${OTLP_LOGS_ENDPOINT}"}
+            - {name: PROMETHEUS_DATASOURCE, value: "${PROMETHEUS_DATASOURCE}"}
+            - {name: LOKI_DATASOURCE, value: "${LOKI_DATASOURCE}"}
+            - {name: BACKLOT_DATA_DIR, value: "/tmp/backlot"}
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+              valueFrom: {secretKeyRef: {name: grafana-sa-token, key: latest}}
+            - name: MCP_GRAFANA_SERVER_TOKEN
+              valueFrom: {secretKeyRef: {name: mcp-grafana-server-token, key: latest}}
+            - name: OTLP_AUTH_HEADER
+              valueFrom: {secretKeyRef: {name: otlp-auth-header, key: latest}}
+          resources: {limits: {cpu: "1", memory: "1Gi"}}
+        - name: mcp-grafana
+          image: grafana/mcp-grafana:latest
+          args: ["-t", "streamable-http", "--address", "0.0.0.0:8000", "--disable-admin", "--disable-oncall"]
+          env:
+            - {name: GRAFANA_URL, value: "${GRAFANA_URL}"}
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+              valueFrom: {secretKeyRef: {name: grafana-sa-token, key: latest}}
+            - name: MCP_GRAFANA_SERVER_TOKEN
+              valueFrom: {secretKeyRef: {name: mcp-grafana-server-token, key: latest}}
+          resources: {limits: {cpu: "0.5", memory: "256Mi"}}
+          startupProbe:
+            httpGet: {path: /healthz, port: 8000}
+            periodSeconds: 2
+            failureThreshold: 30

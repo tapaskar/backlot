@@ -1,0 +1,32 @@
+[project]
+name = "backlot"
+version = "0.1.0"
+description = "Backlot: an AI production office for independent filmmakers. Script in, shoot planned, shoot monitored in Grafana, wrap report out."
+requires-python = ">=3.11"
+license = {text = "MIT"}
+dependencies = [
+  "google-adk>=2.8",
+  "google-genai",
+  "pydantic>=2",
+  "fastapi",
+  "uvicorn[standard]",
+  "python-multipart",
+  "httpx",
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp-proto-http",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-asyncio"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["backlot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

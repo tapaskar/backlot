@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backlot</title>
+<style>
+  :root { --bg:#0f0f12; --panel:#17171c; --line:#2a2a33; --ink:#f2f0ea; --dim:#9a9aa6; --gold:#f2cc0c; --green:#3ddc84; --red:#ff5c5c; --amber:#ffb020; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif }
+  header { display:flex; align-items:baseline; gap:14px; padding:18px 28px; border-bottom:1px solid var(--line) }
+  header h1 { margin:0; font-size:22px; letter-spacing:.04em } header h1 span { color:var(--gold) }
+  header small { color:var(--dim) } #status { margin-left:auto; color:var(--dim); font-size:13px }
+  main { display:grid; grid-template-columns: 380px 1fr; gap:0; min-height:calc(100vh - 62px) }
+  aside { border-right:1px solid var(--line); padding:20px; }
+  section { padding:20px 28px }
+  textarea { width:100%; height:300px; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px; font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; resize:vertical }
+  input[type=text] { width:100%; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:6px 0 }
+  button { background:var(--gold); color:#111; border:0; border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer; margin:6px 6px 0 0 }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line) }
+  button:disabled { opacity:.45; cursor:default }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:16px }
+  .card h2 { margin:0 0 10px; font-size:15px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim) }
+  .row { display:flex; gap:16px; flex-wrap:wrap } .row .card { flex:1 1 280px }
+  table { width:100%; border-collapse:collapse; font-size:14px } td, th { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top } th { color:var(--dim); font-weight:500 }
+  .stat { font-size:28px; font-weight:700 } .stat small { font-size:13px; color:var(--dim); font-weight:400; margin-left:6px }
+  .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600 }
+  .on_track { background:var(--green); color:#0b2 } .slipping { background:var(--amber); color:#321 } .over_budget, .blocked { background:var(--red); color:#fff }
+  .note { border-left:3px solid var(--gold); padding:8px 12px; margin:10px 0; background:#1d1d24; border-radius:6px }
+  .note p { margin:6px 0 } ul { margin:6px 0 6px 18px; padding:0 }
+  a { color:var(--gold) } .dim { color:var(--dim) } pre { white-space:pre-wrap; font-size:13px }
+  label { font-size:13px; color:var(--dim) } .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+  input[type=range] { width:140px }
+</style>
+</head>
+<body>
+<header><h1>BACK<span>LOT</span></h1><small>an AI production office for independent filmmakers</small><span id="status"></span></header>
+<main>
+  <aside>
+    <div class="card">
+      <h2>1 · Script</h2>
+      <input id="title" type="text" placeholder="Title (optional, read from the script)">
+      <textarea id="script" placeholder="Paste a screenplay (Fountain or plain INT./EXT. scene headings)"></textarea>
+      <button class="ghost" onclick="loadDemo()">Load demo script</button>
+      <button onclick="createProject()">Break it down</button>
+    </div>
+    <div class="card">
+      <h2>Projects</h2>
+      <div id="projects" class="dim">none yet</div>
+    </div>
+  </aside>
+  <section id="view"><div class="card"><p class="dim">Paste a script, or load the demo, to see Backlot break it down, schedule it, budget it, put the shoot on a Grafana dashboard, and direct it day by day.</p></div></section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let slug = null, project = null, health = null;
+const money = n => '$' + Math.round(n).toLocaleString();
+async function api(path, opts={}) {
+  const r = await fetch('/api' + path, {headers: {'content-type': 'application/json'}, ...opts});
+  const j = await r.json(); if (!r.ok) throw new Error(j.detail || j.error || r.statusText); return j;
+}
+async function loadDemo() { const d = await api('/demo-script'); $('#script').value = d.script; $('#title').value = ''; }
+async function refreshProjects() {
+  const list = await api('/projects');
+  $('#projects').innerHTML = list.length ? list.map(p => `<div><a href="#" onclick="open_('${p.slug}');return false">${p.title}</a> <span class="dim">· ${p.status}, ${p.days} day(s)</span></div>`).join('') : '<span class="dim">none yet</span>';
+}
+async function createProject() {
+  try { busy('Breaking down…'); project = await api('/projects', {method:'POST', body: JSON.stringify({title: $('#title').value || null, script: $('#script').value})});
+    slug = project.slug; render(); refreshProjects(); } catch (e) { alert(e.message) } finally { busy() }
+}
+async function open_(s) { project = await api('/projects/' + s); slug = s; render(); }
+async function act(path, body) {
+  try { busy('Working… the crew is on it'); project = await api(`/projects/${slug}/${path}`, {method:'POST', body: body ? JSON.stringify(body) : undefined}); render(); refreshProjects(); }
+  catch (e) { alert(e.message) } finally { busy() }
+}
+function busy(msg) { $('#status').textContent = msg || (health ? `${health.model} · ${health.offline ? 'offline rules' : 'Gemini crew'} · Grafana ${health.grafana ? 'connected' : 'not configured'}` : ''); document.querySelectorAll('button').forEach(b => b.disabled = !!msg); }
+function render() {
+  const p = project, bd = p.breakdown, sch = p.schedule, b = p.budget; let h = '';
+  h += `<div class="row">
+    <div class="card"><h2>Scenes</h2><div class="stat">${bd ? bd.scenes.length : 0}<small>${p.completed.length} shot</small></div></div>
+    <div class="card"><h2>Days</h2><div class="stat">${sch ? sch.total_days : '–'}<small>${p.days.length} done</small></div></div>
+    <div class="card"><h2>Budget</h2><div class="stat">${b ? money(b.total) : '–'}<small>${money(p.spent)} spent</small></div></div>
+    <div class="card"><h2>Status</h2><div class="stat" style="font-size:20px">${p.status}</div>${p.dashboard && p.dashboard.url ? `<a href="${p.dashboard.url}" target="_blank">Grafana dashboard ↗</a>` : '<span class="dim">no dashboard</span>'}</div>
+  </div>`;
+  h += `<div class="card"><h2>2 · Pre-production</h2>
+    <div class="controls"><label>Pages per day <input id="ppd" type="range" min="1" max="8" step="0.5" value="${sch ? sch.eighths_per_day/8 : 1.5}" oninput="$('#ppdv').textContent=this.value"> <b id="ppdv">${sch ? sch.eighths_per_day/8 : 1.5}</b></label>
+    <button onclick="act('greenlight?eighths_per_day=' + ($('#ppd').value*8))">${sch ? 'Re-plan from scratch' : 'Greenlight: schedule, budget, dashboard'}</button></div>`;
+  if (bd) h += `<table><tr><th>#</th><th>Scene</th><th>Pages</th><th>Cast</th><th>Props / notes</th></tr>` + bd.scenes.map(s => `<tr><td>${s.number}</td><td>${s.heading}<div class="dim">${s.synopsis||''}</div></td><td>${s.eighths}/8</td><td>${s.cast.join(', ')}</td><td>${(s.props||[]).join(', ')}${s.notes ? '<div class="dim">'+s.notes+'</div>' : ''}</td></tr>`).join('') + `</table>`;
+  h += `</div>`;
+  if (sch) {
+    h += `<div class="row"><div class="card"><h2>Shooting schedule</h2><table><tr><th>Day</th><th>Location</th><th>Scenes</th><th>Pages</th><th>Call</th><th>Notes</th></tr>` +
+      sch.days.map(d => `<tr ${d.day <= p.days.length ? 'class="dim"' : ''}><td>${d.day}</td><td>${d.location}</td><td>${d.scenes.join(', ')}</td><td>${d.planned_eighths}/8</td><td>${d.call_time}</td><td>${d.notes}</td></tr>`).join('') + `</table></div>`;
+    h += `<div class="card"><h2>Budget</h2><table>` + b.lines.map(l => `<tr><td>${l.category}</td><td>${l.item}</td><td class="dim">${l.qty} ${l.unit} × ${money(l.unit_cost)}</td><td style="text-align:right">${money(l.total)}</td></tr>`).join('') +
+      `<tr><td colspan=3>Contingency</td><td style="text-align:right">${money(b.contingency)}</td></tr><tr><th colspan=3>Total</th><th style="text-align:right">${money(b.total)}</th></tr></table></div></div>`;
+    if (p.producer_notes) h += `<div class="card"><h2>Line producer's notes</h2><p>${p.producer_notes.summary}</p><b>Risks</b><ul>${p.producer_notes.risks.map(r=>`<li>${r}</li>`).join('')}</ul><b>Suggestions</b><ul>${p.producer_notes.suggestions.map(r=>`<li>${r}</li>`).join('')}</ul></div>`;
+    const left = sch.days.filter(d => d.day > p.days.length).length;
+    h += `<div class="card"><h2>3 · Shoot</h2><div class="controls"><label>Chaos <input id="chaos" type="range" min="0" max="1" step="0.1" value="0.4" oninput="$('#chaosv').textContent=this.value"> <b id="chaosv">0.4</b></label>
+      <button ${left ? '' : 'disabled'} onclick="act('shoot', {chaos: +$('#chaos').value, seed: ${p.days.length}})">Shoot day ${p.days.length + 1}</button>
+      <button class="ghost" ${p.days.length ? '' : 'disabled'} onclick="act('wrap')">Wrap the production</button></div>`;
+    for (const d of [...p.days].reverse()) {
+      const s = d.simulation, n = d.director;
+      h += `<div class="note"><b>Day ${d.day}</b> ${n ? `<span class="tag ${n.status}">${n.status.replace('_',' ')}</span>` : ''} <span class="dim">· ${s.completed.length}/${s.completed.length + s.pushed.length} scenes, ${s.takes} takes, ${s.overtime_min} min overtime${d.replanned ? ' · schedule re-packed' : ''}</span>`;
+      if (n) h += `<p>${n.decision}</p><ul class="dim">${n.evidence.map(e=>`<li>${e}</li>`).join('')}</ul>`;
+      h += `</div>`;
+    }
+    h += `</div>`;
+  }
+  if (p.wrap) { const w = p.wrap; h += `<div class="card"><h2>Wrap report</h2><div class="row"><div><div class="stat">${w.scenes_completed}/${w.scenes_total}<small>scenes</small></div></div><div><div class="stat">${w.days_shot}/${w.days_planned}<small>days</small></div></div><div><div class="stat">${money(w.budget_spent)}<small>of ${money(w.budget_planned)}</small></div></div></div><p>${w.narrative}</p><b>Highlights</b><ul>${w.highlights.map(x=>`<li>${x}</li>`).join('')}</ul><b>Lessons</b><ul>${w.lessons.map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
+  $('#view').innerHTML = h;
+}
+(async () => { health = await api('/health'); busy(); refreshProjects(); })();
+</script>
+</body>
+</html>

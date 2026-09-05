@@ -1,0 +1,51 @@
+# Local studio: Grafana + Prometheus (OTLP receiver) + Loki + the Grafana MCP server + Backlot.
+#   cp .env.example .env   # fill in the Gemini settings; the Grafana values below already match
+#   docker compose up --build
+# Grafana: http://localhost:3000 (admin / backlot)   Backlot: http://localhost:8080
+services:
+  grafana:
+    image: grafana/grafana:12.1.0
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: backlot
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deploy/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/ds.yaml:ro
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--web.enable-otlp-receiver",
+              "--storage.tsdb.retention.time=7d"]
+    ports: ["9090:9090"]
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  loki:
+    image: grafana/loki:3.5.0
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports: ["3100:3100"]
+  mcp-grafana:
+    image: grafana/mcp-grafana:latest
+    command: ["-t", "streamable-http", "--address", "0.0.0.0:8000", "--disable-admin", "--disable-oncall"]
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_SERVICE_ACCOUNT_TOKEN: ${GRAFANA_SERVICE_ACCOUNT_TOKEN}
+      MCP_GRAFANA_SERVER_TOKEN: ${MCP_GRAFANA_SERVER_TOKEN:-change-me}
+    ports: ["8000:8000"]
+    depends_on: [grafana]
+  backlot:
+    build: .
+    ports: ["8080:8080"]
+    env_file: .env
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      MCP_GRAFANA_URL: http://mcp-grafana:8000/mcp
+      OTLP_METRICS_ENDPOINT: http://prometheus:9090/api/v1/otlp/v1/metrics
+      OTLP_LOGS_ENDPOINT: http://loki:3100/otlp/v1/logs
+      OTLP_AUTH_HEADER: ""
+      PROMETHEUS_DATASOURCE: prometheus
+      LOKI_DATASOURCE: loki
+    volumes:
+      - backlot-data:/data
+    depends_on: [grafana, prometheus, loki, mcp-grafana]
+volumes:
+  backlot-data: {}

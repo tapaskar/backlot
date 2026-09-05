@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 15s
+otlp:
+  # keep OTel resource attributes as labels so project= filters work
+  promote_resource_attributes: ["service.name"]
+scrape_configs: []
