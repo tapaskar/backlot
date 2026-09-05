@@ -1,0 +1,28 @@
+{
+  "name": "prime-speaks-video",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx remotion studio",
+    "render": "npx remotion render MarketPulse out/episode.mp4",
+    "render:preview": "npx remotion render MarketPulse out/episode.mp4 --frames=0-150"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1021.0",
+    "@aws-sdk/client-dynamodb": "^3.1023.0",
+    "@aws-sdk/client-polly": "^3.1021.0",
+    "@aws-sdk/lib-dynamodb": "^3.1023.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/player": "^4.0.0",
+    "googleapis": "^171.4.0",
+    "pdf-parse": "^1.1.1",
+    "puppeteer": "^24.40.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.5.0"
+  }
+}
