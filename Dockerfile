@@ -5,6 +5,7 @@ COPY pyproject.toml README.md LICENSE ./
 COPY backlot ./backlot
 COPY grafana ./grafana
 COPY scripts ./scripts
+COPY adk_agents ./adk_agents
 RUN pip install --no-cache-dir . "mcp<2"
 ENV PORT=8080 BACKLOT_DATA_DIR=/data
 VOLUME ["/data"]

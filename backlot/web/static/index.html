@@ -31,6 +31,8 @@
   a { color:var(--gold) } .dim { color:var(--dim) } pre { white-space:pre-wrap; font-size:13px }
   label { font-size:13px; color:var(--dim) } .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap }
   input[type=range] { width:140px }
+  .chatlog { max-height:260px; overflow:auto; font-size:13px; margin-bottom:8px }
+  .chatlog .me { color:var(--gold); margin-top:8px } .chatlog .them { white-space:pre-wrap; margin:4px 0 }
 </style>
 </head>
 <body>
@@ -43,6 +45,15 @@
       <textarea id="script" placeholder="Paste a screenplay (Fountain or plain INT./EXT. scene headings)"></textarea>
       <button class="ghost" onclick="loadDemo()">Load demo script</button>
       <button onclick="createProject()">Break it down</button>
+    </div>
+    <div class="card">
+      <h2>Front desk · Production Director</h2>
+      <div id="chatlog" class="chatlog"><span class="dim">Ask for a script, a shot list, video-generation prompts, or pipeline docs. The director delegates to a screenwriter, a prompt engineer and a docs specialist, and can search the web.</span></div>
+      <div class="controls">
+        <input id="chatmsg" type="text" placeholder="e.g. Write a 6-scene short about a lighthouse keeper" onkeydown="if(event.key==='Enter')sendChat()">
+        <button onclick="sendChat()">Ask</button>
+        <button class="ghost" id="usebtn" disabled onclick="useReply()">Use reply as script</button>
+      </div>
     </div>
     <div class="card">
       <h2>Projects</h2>
@@ -108,6 +119,18 @@ function render() {
   if (p.wrap) { const w = p.wrap; h += `<div class="card"><h2>Wrap report</h2><div class="row"><div><div class="stat">${w.scenes_completed}/${w.scenes_total}<small>scenes</small></div></div><div><div class="stat">${w.days_shot}/${w.days_planned}<small>days</small></div></div><div><div class="stat">${money(w.budget_spent)}<small>of ${money(w.budget_planned)}</small></div></div></div><p>${w.narrative}</p><b>Highlights</b><ul>${w.highlights.map(x=>`<li>${x}</li>`).join('')}</ul><b>Lessons</b><ul>${w.lessons.map(x=>`<li>${x}</li>`).join('')}</ul></div>`; }
   $('#view').innerHTML = h;
 }
+let lastReply = '';
+async function sendChat() {
+  const msg = $('#chatmsg').value.trim(); if (!msg) return;
+  const log = $('#chatlog'); if (log.querySelector('.dim')) log.innerHTML = '';
+  log.insertAdjacentHTML('beforeend', `<div class="me">You: ${msg.replace(/</g,'&lt;')}</div>`); $('#chatmsg').value = '';
+  try { busy('The director is thinking…'); const r = await api(slug ? `/projects/${slug}/chat` : '/chat', {method:'POST', body: JSON.stringify({message: msg})});
+    lastReply = r.reply; $('#usebtn').disabled = !/^(INT|EXT)\.?\s/m.test(r.reply);
+    log.insertAdjacentHTML('beforeend', `<div class="them"><span class="dim">${r.author || 'director'}${r.tools.length ? ' · used ' + r.tools.join(', ') : ''}</span>\n${r.reply.replace(/</g,'&lt;')}</div>`);
+  } catch (e) { log.insertAdjacentHTML('beforeend', `<div class="them" style="color:var(--red)">${e.message}</div>`) }
+  finally { busy(); log.scrollTop = log.scrollHeight }
+}
+function useReply() { $('#script').value = lastReply; $('#title').value = ''; }
 (async () => { health = await api('/health'); busy(); refreshProjects(); })();
 </script>
 </body>

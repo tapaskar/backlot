@@ -37,3 +37,8 @@ def test_full_production_offline():
 def test_bad_script_rejected():
     r = client.post("/api/projects", json={"script": "just some prose without headings"})
     assert r.status_code == 400
+
+
+def test_chat_is_refused_offline_with_a_clear_reason():
+    r = client.post("/api/chat", json={"message": "write me a short"})
+    assert r.status_code == 503 and "Gemini" in r.json()["detail"]

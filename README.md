@@ -8,9 +8,13 @@ changes tomorrow, re-packs the schedule, and writes its decision back to the das
 Built for the *Agentic Cinema: The Blockbuster Hackathon*, **Grafana Labs track**: a
 deterministic multi-agent system on Gemini and the Gemini Enterprise Agent Platform (Agent
 Development Kit), integrated with the **Grafana MCP server** at runtime for both reads and writes.
+A conversational **front desk**, the Backlot Production Director, sits in front of it: ask for a
+script, a shot list, AI-video prompts or pipeline docs, then send the script into the pipeline.
 
 ```
-script ──▶ breakdown ──▶ schedule ──▶ budget ──▶ Grafana dashboard
+idea ──▶ front desk (director ▸ screenwriter / prompt engineer / docs, + search) ──▶ script
+                                                                                   │
+script ──▶ breakdown ──▶ schedule ──▶ budget ──▶ Grafana dashboard ◀───────────────┘
                                                        │
             shoot day N ──▶ telemetry ──▶ Grafana ◀────┘
                                 │
@@ -26,7 +30,7 @@ bottleneck it removes is the one that sinks these shoots: nobody is watching pag
 spend while the day is happening, so slips are discovered on the last day. Backlot gives a
 three-person crew the control room a studio has.
 
-## The crew (agents)
+## The agents
 
 | Agent | Type | Output | Reads | Writes |
 |---|---|---|---|---|
@@ -36,6 +40,31 @@ three-person crew the control room a studio has.
 | `director` | LlmAgent, `output_schema=DirectorNote` | status, decision, replan, scenes to push | investigator's evidence + remaining plan | |
 | `scribe` | LlmAgent + **Grafana MCP** (write tool) | annotation id | | `create_annotation` on the dashboard |
 | `wrap_investigator` / `wrap_writer` | LlmAgent + MCP / `output_schema=WrapReport` | wrap report | whole production from Grafana | |
+
+### The front desk
+
+`backlot/agents/front_desk.py` is the Agent Studio export, cleaned up and wired in. A coordinator,
+`backlot_production_director`, delegates to three specialists and can research on its own:
+
+| Agent | Job | Tools |
+|---|---|---|
+| `screenplay_agent` | scripts, scene outlines, arcs, written in Fountain form so they schedule without editing | |
+| `prompt_pipeline_agent` | shot lists, AI-video generation prompts, pipeline steps and Grafana metric specs that reuse Backlot's telemetry contract | Google Search, URL context (each on its own agent, wrapped as an AgentTool) |
+| `doc_code_specialist` | code, scripts, READMEs for the crew's repository | |
+| coordinator | routes, answers short questions, researches | Google Search, URL context |
+
+It is reachable three ways: the chat panel in the app (`POST /api/chat`, or per project
+`POST /api/projects/{slug}/chat`, sessions persist per project), the ADK dev UI (`adk web adk_agents`),
+and Agent Engine (`adk deploy agent_engine ... adk_agents/backlot_director`, see `adk_agents/README.md`).
+"Use reply as script" drops a generated screenplay into the breakdown.
+
+**Gemini 3.x and the `global` location.** On Vertex AI these models are only served from `global`,
+while an Agent Engine or Cloud Run instance lives in a region, so the stock client fails with
+model-not-found. `GlobalGemini` (`backlot/agents/models.py`) overrides the ADK model's client to
+`GEMINI_LOCATION` (default `global`) and every agent in the repo, crew and front desk alike, is built
+through `model_spec()`, which uses it on Vertex and the plain model id with an API key.
+
+### The crew
 
 `end_of_day = SequentialAgent(investigator → director → scribe)` and `wrap_up` are fixed
 sequences: no delegation, no loops, the same three steps every day, each step's typed output in
@@ -114,7 +143,8 @@ Logs: one line per production event (`call`, `hold`, `take`, `complete`, `push`,
 
 ```bash
 pip install -e ".[test]" "mcp<2"
-pytest -q          # 7 tests: parser, scheduler, replan, budget, simulator, full API run offline
+pytest -q          # 14 tests: parser, scheduler, replan, budget, simulator, front-desk tree,
+                   # model routing, full API run offline, chat refused offline with a reason
 ```
 
 ## Layout
@@ -127,11 +157,15 @@ backlot/
   simulate.py       shooting-day simulator with seeded chaos
   telemetry.py      OTLP push + in-memory store
   grafana_provision.py  dashboard creation at greenlight (HTTP API)
-  agents/crew.py    the seven agents and the two sequences
+  agents/crew.py    the seven pipeline agents and the two sequences
+  agents/front_desk.py  the Production Director network (Agent Studio export, cleaned up)
+  agents/models.py  GlobalGemini: pins Vertex model calls to the global location; model_spec()
+  agents/chat.py    multi-turn sessions with the front desk
   agents/grafana_mcp.py  Grafana MCP toolset (streamable-http or stdio), tool filters
   agents/runtime.py run one agent with prepared state
   pipeline.py       greenlight / shoot_day / wrap
   web/app.py        FastAPI + single-page UI
+adk_agents/backlot_director/  ADK CLI + Agent Engine entry point for the front desk
 grafana/dashboard.json    docker-compose.yaml    deploy/cloud_run.{yaml,sh}    scripts/demo.py
 ```
 
@@ -139,8 +173,10 @@ grafana/dashboard.json    docker-compose.yaml    deploy/cloud_run.{yaml,sh}    s
 
 The shooting day is simulated. Real telemetry would come from the 1st AD's app, a slate app or
 a timecode log; the metric names are the contract, the simulator is a stand-in. The rate card is
-a micro-budget placeholder. The model is `GEMINI_MODEL` (default `gemini-3.8-flash`); set it to any
-Gemini Flash id your project can use.
+a micro-budget placeholder. The model is `GEMINI_MODEL` (default `gemini-3.5-flash`, served from
+`GEMINI_LOCATION=global` on Vertex); set it to any Gemini Flash id your project can use. The front
+desk's Google Search and URL context tools are Gemini built-ins and need Vertex AI or a Gemini API key
+with grounding enabled.
 
 ## Licence
 
