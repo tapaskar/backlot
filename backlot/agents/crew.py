@@ -16,16 +16,14 @@ from __future__ import annotations
 
 from google.adk.agents import LlmAgent, SequentialAgent
 
-from .. import config
 from ..schemas import Breakdown, DirectorNote, ProducerNotes, WrapReport
 from .grafana_mcp import READ_TOOLS, WRITE_TOOLS, grafana_toolset
-
-MODEL = config.GEMINI_MODEL
+from .models import model_spec
 
 
 def script_supervisor() -> LlmAgent:
     return LlmAgent(
-        name="script_supervisor", model=MODEL, output_schema=Breakdown, output_key="breakdown",
+        name="script_supervisor", model=model_spec(), output_schema=Breakdown, output_key="breakdown",
         description="Enriches a parsed screenplay breakdown.",
         instruction="""You are a film script supervisor preparing a breakdown for scheduling.
 You receive a screenplay and a deterministic parse of it as JSON (scene numbers, headings,
@@ -44,7 +42,7 @@ time_of_day, eighths or cast. If the parse says 8 scenes, you return 8 scenes.""
 
 def line_producer() -> LlmAgent:
     return LlmAgent(
-        name="line_producer", model=MODEL, output_schema=ProducerNotes, output_key="producer_notes",
+        name="line_producer", model=model_spec(), output_schema=ProducerNotes, output_key="producer_notes",
         description="Reviews the schedule and budget for risk.",
         instruction="""You are an experienced independent-film line producer.
 You receive the breakdown, the shooting schedule (packed by a deterministic scheduler) and
@@ -61,7 +59,7 @@ Do not restate the schedule. Do not invent scenes or costs that are not in the i
 
 def set_investigator() -> LlmAgent:
     return LlmAgent(
-        name="set_investigator", model=MODEL, output_key="evidence",
+        name="set_investigator", model=model_spec(), output_key="evidence",
         description="Reads today's production numbers from Grafana.",
         tools=[grafana_toolset(READ_TOOLS)],
         instruction="""You are the production coordinator. Read today's numbers for the film
@@ -84,7 +82,7 @@ If a tool fails, say which one and what you could still establish. Do not interp
 
 def director() -> LlmAgent:
     return LlmAgent(
-        name="director", model=MODEL, output_schema=DirectorNote, output_key="director_note",
+        name="director", model=model_spec(), output_schema=DirectorNote, output_key="director_note",
         description="Decides what changes tomorrow.",
         instruction="""You are the director at the end of shooting day {day} on "{title}".
 
@@ -107,7 +105,7 @@ Ground every number in the evidence; if the evidence is missing a number, say so
 
 def scribe() -> LlmAgent:
     return LlmAgent(
-        name="scribe", model=MODEL, output_key="annotation_result",
+        name="scribe", model=model_spec(), output_key="annotation_result",
         description="Posts the director's note to Grafana as an annotation.",
         tools=[grafana_toolset(WRITE_TOOLS)],
         instruction="""Post the director's end-of-day note for project "{slug}", day {day}, as a Grafana
@@ -118,7 +116,7 @@ Tags: backlot, {slug}, day-{day}, <status>. Reply with the annotation id, or the
 
 def wrap_investigator() -> LlmAgent:
     return LlmAgent(
-        name="wrap_investigator", model=MODEL, output_key="evidence",
+        name="wrap_investigator", model=model_spec(), output_key="evidence",
         description="Reads the whole production from Grafana.",
         tools=[grafana_toolset(READ_TOOLS)],
         instruction="""Read the full production record for film project "{slug}" from Grafana.
@@ -131,7 +129,7 @@ Report a numbered list of facts with numbers. Facts only.""")
 
 def wrap_writer() -> LlmAgent:
     return LlmAgent(
-        name="wrap_writer", model=MODEL, output_schema=WrapReport, output_key="wrap_report",
+        name="wrap_writer", model=model_spec(), output_schema=WrapReport, output_key="wrap_report",
         description="Writes the wrap report.",
         instruction="""Write the wrap report for "{title}".
 Evidence from Grafana: {evidence}

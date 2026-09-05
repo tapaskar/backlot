@@ -10,7 +10,9 @@ def env(name: str, default: str | None = None) -> str | None:
     return v if v not in (None, "") else default
 
 
-GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.5-flash")
+GEMINI_LOCATION = env("GEMINI_LOCATION", "global")     # gemini-3.x on Vertex is served from global
+GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT")
 DATA_DIR = Path(env("BACKLOT_DATA_DIR", "data"))
 
 # Grafana instance the MCP server talks to (Grafana Cloud or local OSS)

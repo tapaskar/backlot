@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__, config, pipeline
+from ..agents import chat
 from ..agents.grafana_mcp import grafana_configured
 from ..fountain import parse_script
 from ..store import store
@@ -28,6 +29,10 @@ class NewProject(BaseModel):
 class ShootRequest(BaseModel):
     chaos: float = 0.3
     seed: int = 0
+
+
+class ChatRequest(BaseModel):
+    message: str
 
 
 @app.get("/")
@@ -100,6 +105,30 @@ async def wrap(slug: str):
         return await pipeline.wrap(p)
     except ValueError as e:
         raise HTTPException(409, str(e))
+
+
+@app.post("/api/chat")
+async def chat_lobby(body: ChatRequest):
+    """Talk to the Backlot Production Director before a project exists."""
+    return await _chat("lobby", body.message)
+
+
+@app.post("/api/projects/{slug}/chat")
+async def chat_project(slug: str, body: ChatRequest):
+    """Talk to the director about this project; the session persists per project."""
+    if not store.get(slug):
+        raise HTTPException(404, "no such project")
+    return await _chat(slug, body.message)
+
+
+async def _chat(session_id: str, message: str):
+    if pipeline.offline():
+        raise HTTPException(503, "The front desk needs Gemini credentials (GOOGLE_API_KEY or "
+                                 "GOOGLE_GENAI_USE_VERTEXAI=TRUE with GOOGLE_CLOUD_PROJECT); offline mode "
+                                 "only runs the deterministic pipeline.")
+    if not message.strip():
+        raise HTTPException(400, "empty message")
+    return await chat.ask(session_id, message.strip())
 
 
 @app.exception_handler(Exception)
